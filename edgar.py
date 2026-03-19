@@ -4,24 +4,45 @@ import requests
 import time
 
 headers = {
-    "User-Agent": "Your Name yourname@email.com"  # required by SEC
+    "User-Agent": "Jack Zhou jackzhou018@gmail.com"  # required by SEC
 }
 
-# Get all filings for a company by CIK number
-# Apple = 0000320193
-def get_filings(cik, form_type="10-K"):
+
+
+def getfilings(cik, form_type = "10-K"):
+
     cik = str(cik).zfill(10)
     url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-    r = requests.get(url, headers=headers)
-    data = r.json()
-    
+    response = requests.get(url, headers=headers)
+    data = response.json()
     filings = data["filings"]["recent"]
-    results = []
-    for i, form in enumerate(filings["form"]):
-        if form == form_type:
-            results.append({
+    arr = []
+
+    for i, value in enumerate(filings["form"]):
+        if value == form_type:
+            arr.append({
                 "date": filings["filingDate"][i],
                 "accession": filings["accessionNumber"][i],
-                "form": form
-            })
-    return results
+                "form": value
+            }
+            )
+    return arr 
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+print(getfilings(320193))
