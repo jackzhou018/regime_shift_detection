@@ -58,15 +58,6 @@ def get_filings_text(cik, accession):
 
 
 
-    
-
-
-
-
-
-
-
-
 
 
 
