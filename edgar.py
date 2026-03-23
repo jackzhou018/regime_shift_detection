@@ -3,6 +3,7 @@
 import requests
 import time
 from bs4 import BeautifulSoup
+import re
 
 headers = {
     "User-Agent": "Jack Zhou jackzhou018@gmail.com"  # required by SEC
@@ -57,6 +58,50 @@ def get_filings_text(cik, accession):
     return 
 
 
+# extract item 7 of the filing for manager opinion
+def extract_mdna(html_text):
+    soup = BeautifulSoup(html_text, "html.parser")
+    
+    item7_tags = []
+    item8_tags = []
+    for tag in soup.find_all(["b", "strong", "span", "p", "div"]):
+        style = tag.get("style", "")
+        text = tag.get_text(strip=True)
+        
+        # check if bold - either via tag name or css style
+        is_bold = (
+            tag.name in ["b", "strong"] or
+            "font-weight:700" in style or
+            "font-weight: 700" in style or
+            "font-weight:bold" in style or
+            "font-weight: bold" in style
+        ) 
+        if is_bold:
+            if re.search(r"Item\s*7[^A-Za-z]", text, re.IGNORECASE):
+                item7_tags.append(tag)
+            if re.search(r"Item\s*8[^A-Za-z]", text, re.IGNORECASE):
+                item8_tags.append(tag)
+
+    if len(item7_tags) == 0: 
+        print("Item 7 tag coudn't be found")
+        return None
+    else:
+        item7_tag = item7_tags[-1]
+    if len(item8_tags) == 0: 
+        print("Item 8 tag coudn't be found")
+        return None
+    else:
+        item8_tag = item8_tags[-1]
+
+    full_text = soup.get_text(separator=" ")
+    item7_text = item7_tag.get_text(strip=True)
+    item8_text = item8_tag.get_text(strip=True)
+
+    item7_pos = full_text.rfind(item7_text)
+    item8_pos = full_text.rfind(item8_text)
+
+    mdna = full_text[item7_pos:item8_pos]
+    return mdna
 
 
 
@@ -66,5 +111,13 @@ def get_filings_text(cik, accession):
 
 
 
-print(get_filings(320193))
-print(get_filings_text(320193, "0000320193-19-000119"))
+
+
+
+if __name__ == "__main__":
+    #  0000320193-19-000119
+    #print(get_filings(320193))
+    html_text = get_filings_text(320193, "0000320193-25-000079")
+    #print(html_text[:1000])
+    mdna = extract_mdna(html_text)
+    print(mdna[-1000:])
