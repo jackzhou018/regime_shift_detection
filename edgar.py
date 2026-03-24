@@ -4,6 +4,7 @@ import requests
 import time
 from bs4 import BeautifulSoup
 import re
+from sentence_transformers import SentenceTransformer
 
 headers = {
     "User-Agent": "Jack Zhou jackzhou018@gmail.com"  # required by SEC
@@ -103,6 +104,10 @@ def extract_mdna(html_text):
     mdna = full_text[item7_pos:item8_pos]
     return mdna
 
+def embed(text):
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    embedding = model.encode(text)
+    return embedding
 
 
 
@@ -117,7 +122,19 @@ def extract_mdna(html_text):
 if __name__ == "__main__":
     #  0000320193-19-000119
     #print(get_filings(320193))
-    html_text = get_filings_text(320193, "0000320193-25-000079")
+    #html_text = get_filings_text(320193, "0000320193-25-000079")
     #print(html_text[:1000])
-    mdna = extract_mdna(html_text)
-    print(mdna[-1000:])
+    #mdna = extract_mdna(html_text)
+    #print(mdna[-1000:])
+    cik = 320193
+    filings = get_filings(cik)
+    embeddings = []
+
+    for i, file in enumerate(filings):
+        html_text = get_filings_text(cik, file["accession"])
+        mdna = extract_mdna(html_text)
+        if mdna != None:
+            embedding = embed(mdna)
+            embeddings.append(embedding)
+    print(embeddings)
+
