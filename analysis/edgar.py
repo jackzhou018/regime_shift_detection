@@ -113,7 +113,6 @@ def extract_mdna(html_text):
 
 # turn text to an embedded vector 
 def embed(text):
-    model = SentenceTransformer("all-MiniLM-L6-v2")
     embedding = model.encode(text)
     return embedding
 
@@ -170,6 +169,8 @@ if __name__ == "__main__":
 
     cik = 320193
     filings = get_filings(cik)
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+
 
     aggregate_embeddings = defaultdict(list)
 
@@ -178,6 +179,7 @@ if __name__ == "__main__":
 
     market_embeddings = average_quarters(aggregate_embeddings)
     sims = cos_sim(market_embeddings)
+    print(sims)
 
 
 
