@@ -9,6 +9,10 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
 from collections import defaultdict
+import sqlite3
+import requests
+
+
 
 
 
@@ -17,6 +21,28 @@ headers = {
     "User-Agent": "Jack Zhou jackzhou018@gmail.com"  # required by SEC
 }
 
+sp500_ciks = {
+    "AAPL": "0000320193",
+    "MSFT": "0000789019",
+    "AMZN": "0001018724",
+    "GOOGL": "0001652044",
+    "GOOG": "0001652044",
+    "META": "0001326801",
+    "NVDA": "0001045810",
+    "TSLA": "0001318605",
+    "BRK.B": "0001067983",
+    "JPM": "0000019617",
+    "V": "0001403161",
+    "JNJ": "0000200406",
+    "UNH": "0000731766",
+    "PG": "0000080424",
+    "XOM": "0000034088",
+    "HD": "0000354950",
+    "MA": "0001141391",
+    "CVX": "0000093410",
+    "PFE": "0000078003",
+    "KO": "0000021344",
+}
 
 
 
@@ -155,7 +181,23 @@ def cos_sim(market_embeddings):
     return sims
     
 
+def already_processed(cursor, accession):
+    cursor.execute("SELECT 1 FROM filings WHERE accession = ?", (accession,))
+    return cursor.fetchone() is not None
 
+
+def cache_filings(cursor, cik, file):
+
+    # now with database caching
+    for file in filings:
+        if already_processed(cursor, file["accession"]):
+            continue
+        html = get_filing_text(cik, file["accession"])
+        mdna = extract_mdna(html)
+        # store in database instead of just a dict
+        cursor.execute("INSERT INTO filings VALUES (?, ?, ?)", 
+                    (cik, file["date"], mdna))
+        conn.commit()
 
 
 
@@ -167,15 +209,33 @@ if __name__ == "__main__":
     #print(get_filings(320193))
     #html_text = get_filings_text(320193, "0000320193-25-000079")
 
-    cik = 320193
-    filings = get_filings(cik)
+    # database setup
+    conn = sqlite3.connect("edgar.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS filings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cik TEXT,
+            date TEXT,
+            accession TEXT,
+            form_type TEXT,
+            mdna TEXT
+        )
+    """)
+    conn.commit()
+
+
+
+    
     model = SentenceTransformer("all-MiniLM-L6-v2")
-
-
     aggregate_embeddings = defaultdict(list)
 
-    # i want to store some metadata for each company so function returns company embedding, but changes aggregate embedding within function
-    total, embeddings = get_embeddings(filings, aggregate_embeddings)
+
+    for cik in sp500_ciks.values():
+        
+        filings = get_filings(cik)
+        # i want to store some metadata for each company so function returns company embedding, but changes aggregate embedding within function
+        total, embeddings = get_embeddings(filings, aggregate_embeddings)
 
     market_embeddings = average_quarters(aggregate_embeddings)
     sims = cos_sim(market_embeddings)
