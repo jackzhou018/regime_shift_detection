@@ -146,6 +146,15 @@ def embed(text):
 def get_embeddings(filings, aggregate_embeddings): 
     embeddings = {}
     for i, file in enumerate(filings):
+        # check if file is already in database
+        if already_processed(cursor, file["accession"]):
+            # retrieve embedding from database
+            embedding = retrieve_embedding(cursor, file["accession"])
+            if embedding is not None:
+                embeddings[file["date"]] = embedding
+                embeddings["quarter"] = pd.Timestamp(file["date"]).to_period("Q")
+                aggregate_embeddings[embeddings["quarter"]].append(embedding)
+            continue
         html_text = get_filings_text(cik, file["accession"])        
         mdna = extract_mdna(html_text)
         if mdna != None:
@@ -154,6 +163,8 @@ def get_embeddings(filings, aggregate_embeddings):
             # using date -> put it into a bucket (quarter) of form ####Q# eg. 2019Q1
             embeddings["quarter"] = pd.Timestamp(file["date"]).to_period("Q")
             aggregate_embeddings[embeddings["quarter"]].append(embedding)
+            # cache filings to permanent database to avoid reprocessing
+            cache_filings(cursor, cik, file, embedding.tobytes())
     total = len(embeddings)
     return total, embeddings
 
@@ -185,19 +196,22 @@ def already_processed(cursor, accession):
     cursor.execute("SELECT 1 FROM filings WHERE accession = ?", (accession,))
     return cursor.fetchone() is not None
 
-
-def cache_filings(cursor, cik, file):
-
-    # now with database caching
-    for file in filings:
-        if already_processed(cursor, file["accession"]):
-            continue
-        html = get_filing_text(cik, file["accession"])
-        mdna = extract_mdna(html)
+def cache_filings(cursor, cik, file, embedding):
         # store in database instead of just a dict
-        cursor.execute("INSERT INTO filings VALUES (?, ?, ?)", 
-                    (cik, file["date"], mdna))
+        cursor.execute("INSERT INTO filings (cik, date, accession, form_type, embedding) VALUES (?, ?, ?, ?, ?)", 
+                    (cik, file["date"], file["accession"], file["form_type"], embedding))
         conn.commit()
+
+def retrieve_embedding(cursor, accession):
+    '''
+    retrieves embedding from database for given accession number, returns as numpy array
+    '''
+    cursor.execute("SELECT embedding FROM filings WHERE accession = ?", (accession,))
+    result = cursor.fetchone()
+    if result:
+        return np.frombuffer(result[0], dtype=np.float32)
+    else:
+        return None
 
 
 
@@ -212,6 +226,7 @@ if __name__ == "__main__":
     # database setup
     conn = sqlite3.connect("edgar.db")
     cursor = conn.cursor()
+    # make sure to convert embedding to bytes before storing in database, and convert back to numpy array after retrieving from database
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS filings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -220,26 +235,30 @@ if __name__ == "__main__":
             accession TEXT,
             form_type TEXT,
             mdna TEXT
+            embedding BLOB 
         )
     """)
     conn.commit()
-
-
 
     
     model = SentenceTransformer("all-MiniLM-L6-v2")
     aggregate_embeddings = defaultdict(list)
 
-
+    # loop through each company, get filings, extract mdna, embed, and store in aggregate embeddings by quarter
     for cik in sp500_ciks.values():
         
         filings = get_filings(cik)
         # i want to store some metadata for each company so function returns company embedding, but changes aggregate embedding within function
         total, embeddings = get_embeddings(filings, aggregate_embeddings)
-
+    
+    # average embeddings in each quarter to get market embedding, then compute similarity between quarters 
     market_embeddings = average_quarters(aggregate_embeddings)
     sims = cos_sim(market_embeddings)
     print(sims)
+
+    cursor.close()
+    conn.close()
+
 
 
 
